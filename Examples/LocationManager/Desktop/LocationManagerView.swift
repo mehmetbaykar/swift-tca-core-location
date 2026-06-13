@@ -1,77 +1,74 @@
-import Combine
 import ComposableArchitecture
-import ComposableCoreLocation
-import MapKit
+import LocationManagerFeature
 import SwiftUI
 
 struct LocationManagerView: View {
   @Environment(\.colorScheme) var colorScheme
-  let store: Store<AppState, AppAction>
+  @Perception.Bindable var store: StoreOf<AppFeature>
 
   var body: some View {
-    WithViewStore(self.store) { viewStore in
-      ZStack {
-        MapView(
-          pointsOfInterest: viewStore.pointsOfInterest,
-          region: viewStore.binding(get: { $0.region }, send: AppAction.updateRegion)
-        )
-        .edgesIgnoringSafeArea([.all])
-
-        VStack(alignment: .center) {
-          Spacer()
-
-          HStack(spacing: 16) {
-            ForEach(AppState.pointOfInterestCategories, id: \.rawValue) { category in
-              Button(category.displayName) { viewStore.send(.categoryButtonTapped(category)) }
-                .buttonStyle(PlainButtonStyle())
-                .padding([.all], 12)
-                .background(
-                  category == viewStore.pointOfInterestCategory ? Color.blue : Color.secondary
-                )
-                .foregroundColor(.white)
-                .cornerRadius(8)
-            }
-
-            Spacer()
-
-            Button(action: { viewStore.send(.currentLocationButtonTapped) }) {
-              Text("📍")
-                .font(.body)
-                .foregroundColor(Color.white)
-                .frame(width: 44, height: 44)
-                .background(Color.secondary)
-                .clipShape(Circle())
-            }
-            .buttonStyle(PlainButtonStyle())
-
-          }
-          .padding([.leading, .trailing])
-          .padding([.bottom], 16)
-        }
-      }
-      .alert(self.store.scope(state: { $0.alert }), dismiss: .dismissAlertButtonTapped)
-      .onAppear { viewStore.send(.onAppear) }
-    }
-  }
-}
-
-struct ContentView_Previews: PreviewProvider {
-  static var previews: some View {
-    let appView = LocationManagerView(
-      store: Store(
-        initialState: AppState(),
-        reducer: appReducer,
-        environment: AppEnvironment(
-          localSearch: .live,
-          locationManager: .live
+    ZStack {
+      MapView(
+        pointsOfInterest: store.pointsOfInterest,
+        region: Binding(
+          get: { store.region },
+          set: { store.send(.view(.regionChanged($0))) }
         )
       )
-    )
+      .ignoresSafeArea()
 
-    return Group {
-      appView
-      appView
-        .environment(\.colorScheme, .dark)
+      VStack(alignment: .center) {
+        Spacer()
+
+        HStack(spacing: 16) {
+          ForEach(PointOfInterestCategory.allCases) { category in
+            Button(category.displayName) {
+              store.send(.view(.categoryButtonTapped(category)))
+            }
+            .buttonStyle(.plain)
+            .padding(12)
+            .background(
+              category == store.pointOfInterestCategory ? Color.blue : Color.secondary
+            )
+            .foregroundColor(.white)
+            .cornerRadius(8)
+          }
+
+          Spacer()
+
+          Button {
+            store.send(.view(.currentLocationButtonTapped))
+          } label: {
+            Image(systemName: "location")
+              .font(.body)
+              .foregroundColor(.white)
+              .frame(width: 44, height: 44)
+              .background(Color.secondary)
+              .clipShape(Circle())
+          }
+          .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 16)
+      }
+    }
+    .alert($store.scope(\.alert, action: \.alert))
+    .task {
+      await store.send(.view(.runLocationManager)).finish()
     }
   }
 }
+
+#if DEBUG
+  struct LocationManagerView_Previews: PreviewProvider {
+    static var previews: some View {
+      LocationManagerView(
+        store: Store(
+          initialState: AppFeature.State()
+        ) {
+          AppFeature()
+        }
+      )
+    }
+  }
+#endif

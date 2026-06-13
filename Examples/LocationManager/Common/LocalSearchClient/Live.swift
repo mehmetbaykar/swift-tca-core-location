@@ -1,23 +1,20 @@
-import Combine
-import ComposableArchitecture
 import MapKit
 
 extension LocalSearchClient {
-  public static let live = LocalSearchClient(
-    search: { request in
-      EffectPublisher.future { callback in
-        MKLocalSearch(request: request).start { response, error in
-          switch (response, error) {
-          case let (.some(response), _):
-            callback(.success(LocalSearchResponse(response: response)))
+  public static let live = Self { request in
+    let searchRequest = MKLocalSearch.Request()
+    searchRequest.pointOfInterestFilter = MKPointOfInterestFilter(
+      including: [request.category.mapKitCategory]
+    )
+    if let region = request.region {
+      searchRequest.region = region.mapKitRegion
+    }
 
-          case (_, .some):
-            callback(.failure(LocalSearchClient.Error()))
-
-          case (.none, .none):
-            fatalError("It should not be possible that response and error are both nil.")
-          }
-        }
-      }
-    })
+    do {
+      let response = try await MKLocalSearch(request: searchRequest).start()
+      return LocalSearchResponse(response: response)
+    } catch {
+      throw LocalSearchClient.Error()
+    }
+  }
 }

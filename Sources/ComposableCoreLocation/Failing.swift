@@ -1,109 +1,119 @@
-import ComposableArchitecture
 import CoreLocation
-import XCTestDynamicOverlay
+import IssueReporting
 
 extension LocationManager {
-  /// The failing implementation of the ``LocationManager`` interface. By default this
-  /// implementation stubs all of its endpoints as functions that immediately call `XCTFail`.
+  /// A failing implementation of the `LocationManager` interface for tests.
   ///
-  /// This allows you to test an even deeper property of your features: that they use only the
-  /// location manager endpoints that you specify and nothing else. This can be useful as a
-  /// measurement of just how complex a particular test is. Tests that need to stub many endpoints
-  /// are in some sense more complicated than tests that only need to stub a few endpoints. It's not
-  /// necessarily a bad thing to stub many endpoints. Sometimes it's needed.
-  ///
-  /// As an example, to create a failing manager that simulates a location manager that has already
-  /// authorized access to location, and when a location is requested it immediately responds
-  /// with a mock location we can do something like this:
-  ///
-  /// ```swift
-  /// // Send actions to this subject to simulate the location manager's delegate methods
-  /// // being called.
-  /// let locationManagerSubject = PassthroughSubject<LocationManager.Action, Never>()
-  ///
-  /// // The mock location we want the manager to say we are located at
-  /// let mockLocation = Location(
-  ///   coordinate: CLLocationCoordinate2D(latitude: 40.6501, longitude: -73.94958),
-  ///   // A whole bunch of other properties have been omitted.
-  /// )
-  ///
-  /// var manager = LocationManager.failing
-  ///
-  /// // Override any CLLocationManager endpoints your test invokes:
-  /// manager.authorizationStatus = { .authorizedAlways }
-  /// manager.delegate = { locationManagerSubject.eraseToEffect() }
-  /// manager.locationServicesEnabled = { true }
-  /// manager.requestLocation = {
-  ///   .fireAndForget { locationManagerSubject.send(.didUpdateLocations([mockLocation])) }
-  /// }
-  /// ```
+  /// Override only the endpoints a test expects to use. Any unexpected endpoint records a test
+  /// failure and returns a harmless default value.
   public static let failing = Self(
     accuracyAuthorization: {
-      XCTFail("A failing endpoint was accessed: 'LocationManager.accuracyAuthorization'")
+      reportUnimplemented("LocationManager.accuracyAuthorization")
       return nil
     },
     authorizationStatus: {
-      XCTFail("A failing endpoint was accessed: 'LocationManager.authorizationStatus'")
+      reportUnimplemented("LocationManager.authorizationStatus")
       return .notDetermined
     },
-    delegate: { .failing("LocationManager.delegate") },
+    delegate: {
+      reportUnimplemented("LocationManager.delegate")
+      return AsyncStream { $0.finish() }
+    },
     dismissHeadingCalibrationDisplay: {
-      .failing("LocationManager.dismissHeadingCalibrationDisplay")
+      reportUnimplemented("LocationManager.dismissHeadingCalibrationDisplay")
     },
     heading: {
-      XCTFail("A failing endpoint was accessed: 'LocationManager.heading'")
+      reportUnimplemented("LocationManager.heading")
       return nil
     },
     headingAvailable: {
-      XCTFail("A failing endpoint was accessed: 'LocationManager.headingAvailable'")
+      reportUnimplemented("LocationManager.headingAvailable")
       return false
     },
     isRangingAvailable: {
-      XCTFail("A failing endpoint was accessed: 'LocationManager.isRangingAvailable'")
+      reportUnimplemented("LocationManager.isRangingAvailable")
       return false
     },
     location: {
-      XCTFail("A failing endpoint was accessed: 'LocationManager.location'")
+      reportUnimplemented("LocationManager.location")
       return nil
     },
     locationServicesEnabled: {
-      XCTFail("A failing endpoint was accessed: 'LocationManager.locationServicesEnabled'")
+      reportUnimplemented("LocationManager.locationServicesEnabled")
       return false
     },
     maximumRegionMonitoringDistance: {
-      XCTFail("A failing endpoint was accessed: 'LocationManager.maximumRegionMonitoringDistance'")
+      reportUnimplemented("LocationManager.maximumRegionMonitoringDistance")
       return CLLocationDistanceMax
     },
     monitoredRegions: {
-      XCTFail("A failing endpoint was accessed: 'LocationManager.monitoredRegions'")
+      reportUnimplemented("LocationManager.monitoredRegions")
       return []
     },
-    requestAlwaysAuthorization: { .failing("LocationManager.requestAlwaysAuthorization") },
-    requestLocation: { .failing("LocationManager.requestLocation") },
+    requestAlwaysAuthorization: {
+      reportUnimplemented("LocationManager.requestAlwaysAuthorization")
+    },
+    requestLocation: {
+      reportUnimplemented("LocationManager.requestLocation")
+    },
     requestWhenInUseAuthorization: {
-      .failing("LocationManager.requestWhenInUseAuthorization")
+      reportUnimplemented("LocationManager.requestWhenInUseAuthorization")
     },
     requestTemporaryFullAccuracyAuthorization: { _ in
-      .failing("LocationManager.requestTemporaryFullAccuracyAuthorization")
+      reportUnimplemented("LocationManager.requestTemporaryFullAccuracyAuthorization")
     },
-    set: { _ in .failing("LocationManager.set") },
+    set: { _ in
+      reportUnimplemented("LocationManager.set")
+    },
     significantLocationChangeMonitoringAvailable: {
-      XCTFail()
+      reportUnimplemented("LocationManager.significantLocationChangeMonitoringAvailable")
       return false
     },
-    startMonitoringForRegion: { _ in .failing("LocationManager.startMonitoringForRegion") },
+    startMonitoringForRegion: { _ in
+      reportUnimplemented("LocationManager.startMonitoringForRegion")
+    },
     startMonitoringSignificantLocationChanges: {
-      .failing("LocationManager.startMonitoringSignificantLocationChanges")
+      reportUnimplemented("LocationManager.startMonitoringSignificantLocationChanges")
     },
-    startMonitoringVisits: { .failing("LocationManager.startMonitoringVisits") },
-    startUpdatingHeading: { .failing("LocationManager.startUpdatingHeading") },
-    startUpdatingLocation: { .failing("LocationManager.startUpdatingLocation") },
-    stopMonitoringForRegion: { _ in .failing("LocationManager.stopMonitoringForRegion") },
+    startMonitoringVisits: {
+      reportUnimplemented("LocationManager.startMonitoringVisits")
+    },
+    startUpdatingHeading: {
+      reportUnimplemented("LocationManager.startUpdatingHeading")
+    },
+    startUpdatingLocation: {
+      reportUnimplemented("LocationManager.startUpdatingLocation")
+    },
+    stopMonitoringForRegion: { _ in
+      reportUnimplemented("LocationManager.stopMonitoringForRegion")
+    },
     stopMonitoringSignificantLocationChanges: {
-      .failing("LocationManager.stopMonitoringSignificantLocationChanges")
+      reportUnimplemented("LocationManager.stopMonitoringSignificantLocationChanges")
     },
-    stopMonitoringVisits: { .failing("LocationManager.stopMonitoringVisits") },
-    stopUpdatingHeading: { .failing("LocationManager.stopUpdatingHeading") },
-    stopUpdatingLocation: { .failing("LocationManager.stopUpdatingLocation") }
+    stopMonitoringVisits: {
+      reportUnimplemented("LocationManager.stopMonitoringVisits")
+    },
+    stopUpdatingHeading: {
+      reportUnimplemented("LocationManager.stopUpdatingHeading")
+    },
+    stopUpdatingLocation: {
+      reportUnimplemented("LocationManager.stopUpdatingLocation")
+    }
+  )
+}
+
+private func reportUnimplemented(
+  _ name: StaticString,
+  fileID: StaticString = #fileID,
+  filePath: StaticString = #filePath,
+  line: UInt = #line,
+  column: UInt = #column
+) {
+  reportIssue(
+    "A failing endpoint was accessed: '\(name)'",
+    fileID: fileID,
+    filePath: filePath,
+    line: line,
+    column: column
   )
 }

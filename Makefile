@@ -1,34 +1,53 @@
-PLATFORM_IOS = iOS Simulator,name=iPhone 14
-PLATFORM_MACOS = macOS
-PLATFORM_TVOS = tvOS Simulator,name=Apple TV 4K (3rd generation) (at 1080p)
-PLATFORM_WATCHOS = watchOS Simulator,name=Apple Watch Series 8 (45mm)
+EXAMPLES_WORKSPACE = Examples/ComposableCoreLocationExamples.xcworkspace
+XCODEBUILD_FLAGS = -configuration Debug
+IOS_SIMULATOR_DESTINATION = generic/platform=iOS Simulator
+MACOS_DESTINATION = platform=macOS
 
 default: test
 
-test:
-	xcodebuild test \
-		-scheme ComposableCoreLocation \
-		-destination platform="$(PLATFORM_IOS)"
-	xcodebuild test \
-		-scheme ComposableCoreLocation \
-		-destination platform="$(PLATFORM_MACOS)"
-	xcodebuild test \
-		-scheme ComposableCoreLocation \
-		-destination platform="$(PLATFORM_TVOS)"
-	xcodebuild \
-		-scheme ComposableCoreLocation_watchOS \
-		-destination platform="$(PLATFORM_WATCHOS)"
-	cd Examples/LocationManager \
-		&& xcodebuild test \
-		-scheme LocationManagerDesktop \
-		-destination platform="$(PLATFORM_MACOS)"
-	cd Examples/LocationManager \
-		&& xcodebuild test \
+test: test-package test-examples
+
+test-package:
+	swift test
+
+generate-examples:
+	cd Examples && tuist install
+	cd Examples && tuist generate --no-open
+
+build-example-ios: generate-examples
+	xcodebuild build \
+		-workspace "$(EXAMPLES_WORKSPACE)" \
 		-scheme LocationManagerMobile \
-		-destination platform="$(PLATFORM_IOS)"
+		$(XCODEBUILD_FLAGS) \
+		-destination '$(IOS_SIMULATOR_DESTINATION)'
+
+build-example-macos: generate-examples
+	xcodebuild build \
+		-workspace "$(EXAMPLES_WORKSPACE)" \
+		-scheme LocationManagerDesktop \
+		$(XCODEBUILD_FLAGS) \
+		-destination '$(MACOS_DESTINATION)'
+
+test-example-feature: generate-examples
+	xcodebuild test \
+		-workspace "$(EXAMPLES_WORKSPACE)" \
+		-scheme LocationManagerFeature \
+		$(XCODEBUILD_FLAGS) \
+		-destination '$(MACOS_DESTINATION)'
+
+test-examples: build-example-ios build-example-macos test-example-feature
 
 format:
 	swift format --in-place --recursive \
 		./Examples ./Package.swift ./Sources ./Tests
 
-.PHONY: format test
+.PHONY: \
+	build-example-ios \
+	build-example-macos \
+	default \
+	format \
+	generate-examples \
+	test \
+	test-example-feature \
+	test-examples \
+	test-package

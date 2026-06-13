@@ -42,6 +42,7 @@ public struct MapView: ViewRepresentable {
   public func makeCoordinator() -> MapViewCoordinator {
     MapViewCoordinator(self)
   }
+
   private func makeView(context: Context) -> MKMapView {
     let mapView = MKMapView(frame: .zero)
     mapView.showsUserLocation = true
@@ -52,7 +53,7 @@ public struct MapView: ViewRepresentable {
     mapView.delegate = delegate
 
     if let region = self.region {
-      mapView.setRegion(region.asMKCoordinateRegion, animated: true)
+      mapView.setRegion(region.mapKitRegion, animated: true)
     }
 
     let currentlyDisplayedPOIs = mapView.annotations.compactMap { $0 as? PointOfInterestAnnotation }
@@ -77,7 +78,9 @@ private class PointOfInterestAnnotation: NSObject, MKAnnotation {
     self.pointOfInterest = pointOfInterest
   }
 
-  var coordinate: CLLocationCoordinate2D { self.pointOfInterest.coordinate }
+  var coordinate: CLLocationCoordinate2D {
+    self.pointOfInterest.coordinate.coreLocationCoordinate
+  }
   var subtitle: String? { self.pointOfInterest.subtitle }
   var title: String? { self.pointOfInterest.title }
 }

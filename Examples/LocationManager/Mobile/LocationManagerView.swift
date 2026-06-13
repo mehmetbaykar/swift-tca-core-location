@@ -1,7 +1,5 @@
-import Combine
 import ComposableArchitecture
-import ComposableCoreLocation
-import MapKit
+import LocationManagerFeature
 import SwiftUI
 
 private let readMe = """
@@ -14,50 +12,56 @@ private let readMe = """
 
 struct LocationManagerView: View {
   @Environment(\.colorScheme) var colorScheme
-  let store: Store<AppState, AppAction>
+  @Perception.Bindable var store: StoreOf<AppFeature>
 
   var body: some View {
-    WithViewStore(self.store) { viewStore in
-      ZStack {
-        MapView(
-          pointsOfInterest: viewStore.pointsOfInterest,
-          region: viewStore.binding(get: { $0.region }, send: AppAction.updateRegion)
+    ZStack {
+      MapView(
+        pointsOfInterest: store.pointsOfInterest,
+        region: Binding(
+          get: { store.region },
+          set: { store.send(.view(.regionChanged($0))) }
         )
-        .edgesIgnoringSafeArea([.all])
+      )
+      .ignoresSafeArea()
 
-        VStack(alignment: .trailing) {
-          Spacer()
+      VStack(alignment: .trailing) {
+        Spacer()
 
-          Button(action: { viewStore.send(.currentLocationButtonTapped) }) {
-            Image(systemName: "location")
-              .foregroundColor(Color.white)
-              .frame(width: 60, height: 60)
-              .background(Color.secondary)
-              .clipShape(Circle())
-              .padding([.trailing], 16)
-              .padding([.bottom], 16)
-          }
+        Button {
+          store.send(.view(.currentLocationButtonTapped))
+        } label: {
+          Image(systemName: "location")
+            .foregroundColor(.white)
+            .frame(width: 60, height: 60)
+            .background(Color.secondary)
+            .clipShape(Circle())
+            .padding(.trailing, 16)
+            .padding(.bottom, 16)
+        }
 
-          ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
-              ForEach(AppState.pointOfInterestCategories, id: \.rawValue) { category in
-                Button(category.displayName) { viewStore.send(.categoryButtonTapped(category)) }
-                  .padding([.all], 16)
-                  .background(
-                    category == viewStore.pointOfInterestCategory ? Color.blue : Color.secondary
-                  )
-                  .foregroundColor(.white)
-                  .cornerRadius(8)
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 16) {
+            ForEach(PointOfInterestCategory.allCases) { category in
+              Button(category.displayName) {
+                store.send(.view(.categoryButtonTapped(category)))
               }
+              .padding(16)
+              .background(
+                category == store.pointOfInterestCategory ? Color.blue : Color.secondary
+              )
+              .foregroundColor(.white)
+              .cornerRadius(8)
             }
-            .padding([.leading, .trailing])
-            .padding([.bottom], 32)
           }
+          .padding(.horizontal)
+          .padding(.bottom, 32)
         }
       }
-      .alert(self.store.scope(state: { $0.alert }), dismiss: .dismissAlertButtonTapped)
-      .onAppear { viewStore.send(.onAppear) }
-      .onDisappear { viewStore.send(.onDisappear) }
+    }
+    .alert($store.scope(\.alert, action: \.alert))
+    .task {
+      await store.send(.view(.runLocationManager)).finish()
     }
   }
 }
@@ -75,10 +79,10 @@ struct ContentView: View {
             "Go to demo",
             destination: LocationManagerView(
               store: Store(
-                initialState: AppState(),
-                reducer: appReducer,
-                environment: AppEnvironment(localSearch: .live, locationManager: .live)
-              )
+                initialState: AppFeature.State()
+              ) {
+                AppFeature()
+              }
             )
           )
         }
@@ -92,38 +96,7 @@ struct ContentView: View {
 #if DEBUG
   struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
-      // NB: CLLocationManager mostly does not work in SwiftUI previews, so we provide a mock
-      //     manager that has all authorization allowed and mocks the device's current location
-      //     to Brooklyn, NY.
-      let mockLocation = Location(
-        coordinate: CLLocationCoordinate2D(latitude: 40.6501, longitude: -73.94958)
-      )
-      let locationManagerSubject = PassthroughSubject<LocationManager.Action, Never>()
-      var locationManager = LocationManager.live
-      locationManager.authorizationStatus = { .authorizedAlways }
-      locationManager.delegate = { locationManagerSubject.eraseToEffect() }
-      locationManager.locationServicesEnabled = { true }
-      locationManager.requestLocation = {
-        .fireAndForget { locationManagerSubject.send(.didUpdateLocations([mockLocation])) }
-      }
-
-      let appView = LocationManagerView(
-        store: Store(
-          initialState: AppState(),
-          reducer: appReducer,
-          environment: AppEnvironment(
-            localSearch: .live,
-            locationManager: locationManager
-          )
-        )
-      )
-
-      return Group {
-        ContentView()
-        appView
-        appView
-          .environment(\.colorScheme, .dark)
-      }
+      ContentView()
     }
   }
 #endif

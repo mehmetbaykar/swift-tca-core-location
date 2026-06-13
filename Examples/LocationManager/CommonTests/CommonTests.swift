@@ -1,48 +1,18 @@
-import Combine
 import ComposableArchitecture
 import ComposableCoreLocation
 import CoreLocation
-import MapKit
-import XCTest
+import Foundation
+import Testing
 
-#if os(iOS)
-  import LocationManagerMobile
-#elseif os(macOS)
-  import LocationManagerDesktop
-#endif
+@testable import LocationManagerFeature
 
-class LocationManagerTests: XCTestCase {
-  func testRequestLocation_Allow() {
-    let store = TestStore(
-      initialState: AppState(),
-      reducer: appReducer,
-      environment: AppEnvironment(
-        localSearch: .failing,
-        locationManager: .failing
-      )
-    )
-
-    var didRequestInUseAuthorization = false
-    var didRequestLocation = false
-    let locationManagerSubject = PassthroughSubject<LocationManager.Action, Never>()
-
-    store.environment.locationManager.authorizationStatus = { .notDetermined }
-    store.environment.locationManager.delegate = { locationManagerSubject.eraseToEffect() }
-    store.environment.locationManager.locationServicesEnabled = { true }
-    store.environment.locationManager.requestLocation = {
-      .fireAndForget { didRequestLocation = true }
-    }
-
-    #if os(iOS)
-      store.environment.locationManager.requestWhenInUseAuthorization = {
-        .fireAndForget { didRequestInUseAuthorization = true }
-      }
-    #elseif os(macOS)
-      store.environment.locationManager.requestAlwaysAuthorization = {
-        .fireAndForget { didRequestInUseAuthorization = true }
-      }
-    #endif
-
+@MainActor
+@Suite
+struct LocationManagerTests {
+  @Test
+  func requestLocationAllow() async {
+    let (stream, continuation) = AsyncStream.makeStream(of: LocationManager.Action.self)
+    let recorder = RequestRecorder()
     let currentLocation = Location(
       altitude: 0,
       coordinate: CLLocationCoordinate2D(latitude: 10, longitude: 20),
@@ -53,162 +23,162 @@ class LocationManagerTests: XCTestCase {
       verticalAccuracy: 0
     )
 
-    store.send(.onAppear)
+    let store = TestStore(initialState: AppFeature.State()) {
+      AppFeature()
+    } withDependencies: {
+      $0.localSearch = .failing
+      $0.locationManager = LocationManager.test(
+        authorizationStatus: { .notDetermined },
+        delegate: { stream },
+        locationServicesEnabled: { true },
+        recorder: recorder
+      )
+    }
 
-    // Tap on the button to request current location
-    store.send(.currentLocationButtonTapped) {
+    let task = await store.send(.view(.runLocationManager))
+
+    await store.send(.view(.currentLocationButtonTapped))
+    await store.receive(.currentLocationPermissionStatus(.notDetermined)) {
       $0.isRequestingCurrentLocation = true
     }
-    XCTAssertTrue(didRequestInUseAuthorization)
+    #expect(recorder.didRequestAuthorization)
 
-    // Simulate being given authorized to access location
-    locationManagerSubject.send(.didChangeAuthorization(.authorizedAlways))
-    store.receive(.locationManager(.didChangeAuthorization(.authorizedAlways)))
-    XCTAssertTrue(didRequestLocation)
+    continuation.yield(.didChangeAuthorization(.authorizedAlways))
+    await store.receive(.locationManager(.didChangeAuthorization(.authorizedAlways)))
+    #expect(recorder.didRequestLocation)
 
-    // Simulate finding the user's current location
-    locationManagerSubject.send(.didUpdateLocations([currentLocation]))
-    store.receive(.locationManager(.didUpdateLocations([currentLocation]))) {
+    continuation.yield(.didUpdateLocations([currentLocation]))
+    await store.receive(.locationManager(.didUpdateLocations([currentLocation]))) {
       $0.isRequestingCurrentLocation = false
       $0.region = CoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 10, longitude: 20),
-        span: MKCoordinateSpan.init(latitudeDelta: 0.05, longitudeDelta: 0.05)
+        center: Coordinate(latitude: 10, longitude: 20),
+        span: CoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
       )
     }
 
-    locationManagerSubject.send(completion: .finished)
+    continuation.finish()
+    await task.cancel()
   }
 
-  func testRequestLocation_Deny() {
-    let store = TestStore(
-      initialState: AppState(),
-      reducer: appReducer,
-      environment: AppEnvironment(
-        localSearch: .failing,
-        locationManager: .failing
+  @Test
+  func requestLocationDeny() async {
+    let (stream, continuation) = AsyncStream.makeStream(of: LocationManager.Action.self)
+    let recorder = RequestRecorder()
+
+    let store = TestStore(initialState: AppFeature.State()) {
+      AppFeature()
+    } withDependencies: {
+      $0.localSearch = .failing
+      $0.locationManager = LocationManager.test(
+        authorizationStatus: { .notDetermined },
+        delegate: { stream },
+        locationServicesEnabled: { true },
+        recorder: recorder
       )
-    )
+    }
 
-    var didRequestInUseAuthorization = false
-    let locationManagerSubject = PassthroughSubject<LocationManager.Action, Never>()
+    let task = await store.send(.view(.runLocationManager))
 
-    store.environment.locationManager.authorizationStatus = { .notDetermined }
-    store.environment.locationManager.delegate = { locationManagerSubject.eraseToEffect() }
-    store.environment.locationManager.locationServicesEnabled = { true }
-
-    #if os(iOS)
-      store.environment.locationManager.requestWhenInUseAuthorization = {
-        .fireAndForget { didRequestInUseAuthorization = true }
-      }
-    #elseif os(macOS)
-      store.environment.locationManager.requestAlwaysAuthorization = {
-        .fireAndForget { didRequestInUseAuthorization = true }
-      }
-    #endif
-
-    store.send(.onAppear)
-
-    store.send(.currentLocationButtonTapped) {
+    await store.send(.view(.currentLocationButtonTapped))
+    await store.receive(.currentLocationPermissionStatus(.notDetermined)) {
       $0.isRequestingCurrentLocation = true
     }
-    XCTAssertTrue(didRequestInUseAuthorization)
+    #expect(recorder.didRequestAuthorization)
 
-    // Simulate the user denying location access
-    locationManagerSubject.send(.didChangeAuthorization(.denied))
-    store.receive(.locationManager(.didChangeAuthorization(.denied))) {
-      $0.alert = .init(
-        title: TextState("Location makes this app better. Please consider giving us access.")
-      )
+    continuation.yield(.didChangeAuthorization(.denied))
+    await store.receive(.locationManager(.didChangeAuthorization(.denied))) {
+      $0.alert = AlertState {
+        TextState("Location makes this app better. Please consider giving us access.")
+      }
       $0.isRequestingCurrentLocation = false
     }
 
-    locationManagerSubject.send(completion: .finished)
+    continuation.finish()
+    await task.cancel()
   }
 
-  func testSearchPointsOfInterest_TapCategory() {
-    let store = TestStore(
-      initialState: AppState(),
-      reducer: appReducer,
-      environment: AppEnvironment(
-        localSearch: .failing,
-        locationManager: .failing
-      )
+  @Test
+  func searchPointsOfInterestTapCategory() async {
+    let pointOfInterest = PointOfInterest(
+      coordinate: Coordinate(latitude: 0, longitude: 0),
+      subtitle: nil,
+      title: "Blob's Cafe"
     )
+    let response = LocalSearchResponse(pointsOfInterest: [pointOfInterest])
 
-    let mapItem = MapItem(
-      isCurrentLocation: false,
-      name: "Blob's Cafe",
-      phoneNumber: nil,
-      placemark: Placemark(),
-      pointOfInterestCategory: .cafe,
-      timeZone: nil,
-      url: nil
-    )
-    let localSearchResponse = LocalSearchResponse(
-      boundingRegion: MKCoordinateRegion(),
-      mapItems: [mapItem]
-    )
+    let store = TestStore(initialState: AppFeature.State()) {
+      AppFeature()
+    } withDependencies: {
+      $0.localSearch = LocalSearchClient(search: { _ in response })
+      $0.locationManager = .failing
+    }
 
-    store.environment.localSearch.search = { _ in EffectPublisher(value: localSearchResponse) }
-
-    store.send(.categoryButtonTapped(.cafe)) {
+    await store.send(.view(.categoryButtonTapped(.cafe))) {
       $0.pointOfInterestCategory = .cafe
     }
-    store.receive(.localSearchResponse(.success(localSearchResponse))) {
-      $0.pointsOfInterest = [
-        PointOfInterest(
-          coordinate: CLLocationCoordinate2D(),
-          subtitle: nil,
-          title: "Blob's Cafe"
-        )
-      ]
+    await store.receive(.localSearchResponse(.success(response))) {
+      $0.pointsOfInterest = [pointOfInterest]
     }
   }
 
-  func testSearchPointsOfInterest_PanMap() {
-    let store = TestStore(
-      initialState: AppState(
-        pointOfInterestCategory: .cafe
-      ),
-      reducer: appReducer,
-      environment: AppEnvironment(
-        localSearch: .failing,
-        locationManager: .failing
-      )
+  @Test
+  func searchPointsOfInterestPanMap() async {
+    let pointOfInterest = PointOfInterest(
+      coordinate: Coordinate(latitude: 0, longitude: 0),
+      subtitle: nil,
+      title: "Blob's Cafe"
     )
-
-    let mapItem = MapItem(
-      isCurrentLocation: false,
-      name: "Blob's Cafe",
-      phoneNumber: nil,
-      placemark: Placemark(),
-      pointOfInterestCategory: .cafe,
-      timeZone: nil,
-      url: nil
-    )
-    let localSearchResponse = LocalSearchResponse(
-      boundingRegion: MKCoordinateRegion(),
-      mapItems: [mapItem]
-    )
-
-    store.environment.localSearch.search = { _ in EffectPublisher(value: localSearchResponse) }
-
+    let response = LocalSearchResponse(pointsOfInterest: [pointOfInterest])
     let coordinateRegion = CoordinateRegion(
-      center: CLLocationCoordinate2D(latitude: 10, longitude: 20),
-      span: MKCoordinateSpan(latitudeDelta: 1, longitudeDelta: 2)
+      center: Coordinate(latitude: 10, longitude: 20),
+      span: CoordinateSpan(latitudeDelta: 1, longitudeDelta: 2)
     )
 
-    store.send(.updateRegion(coordinateRegion)) {
+    let store = TestStore(
+      initialState: AppFeature.State(pointOfInterestCategory: .cafe)
+    ) {
+      AppFeature()
+    } withDependencies: {
+      $0.localSearch = LocalSearchClient(search: { _ in response })
+      $0.locationManager = .failing
+    }
+
+    await store.send(.view(.regionChanged(coordinateRegion))) {
       $0.region = coordinateRegion
     }
-    store.receive(.localSearchResponse(.success(localSearchResponse))) {
-      $0.pointsOfInterest = [
-        PointOfInterest(
-          coordinate: CLLocationCoordinate2D(),
-          subtitle: nil,
-          title: "Blob's Cafe"
-        )
-      ]
+    await store.receive(.localSearchResponse(.success(response))) {
+      $0.pointsOfInterest = [pointOfInterest]
     }
+  }
+}
+
+@MainActor
+private final class RequestRecorder: @unchecked Sendable {
+  var didRequestAuthorization = false
+  var didRequestLocation = false
+}
+
+extension LocationManager {
+  @MainActor
+  fileprivate static func test(
+    authorizationStatus: @escaping @MainActor @Sendable () -> CLAuthorizationStatus,
+    delegate: @escaping @MainActor @Sendable () -> AsyncStream<Action>,
+    locationServicesEnabled: @escaping @MainActor @Sendable () -> Bool,
+    recorder: RequestRecorder
+  ) -> Self {
+    var manager = Self.failing
+    manager.authorizationStatus = authorizationStatus
+    manager.delegate = delegate
+    manager.locationServicesEnabled = locationServicesEnabled
+    manager.requestAlwaysAuthorization = {
+      recorder.didRequestAuthorization = true
+    }
+    manager.requestLocation = {
+      recorder.didRequestLocation = true
+    }
+    manager.requestWhenInUseAuthorization = {
+      recorder.didRequestAuthorization = true
+    }
+    return manager
   }
 }
