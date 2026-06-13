@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-26
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -25,14 +25,28 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.5.app
+
+      - name: Print and verify tool versions
+        run: |
+          xcodebuild -version | tee /tmp/xcode-version.txt
+          swift --version | tee /tmp/swift-version.txt
+          grep -q '^Xcode 26\.5$' /tmp/xcode-version.txt
+          grep -q 'Swift version 6\.3' /tmp/swift-version.txt
+
+      - name: Add DocC plugin
+        run: swift package add-dependency https://github.com/swiftlang/swift-docc-plugin --from 1.5.0
+
       - name: Generate Documentation
-        uses: SwiftDocOrg/swift-doc@master
-        with:
-          base-url: /swift-tca-core-location/
-          format: html
-          inputs: Sources/ComposableCoreLocation
-          module-name: ComposableCoreLocation
-          output: Documentation
+        run: |
+          swift package --allow-writing-to-directory Documentation \
+            generate-documentation \
+            --target ComposableCoreLocation \
+            --disable-indexing \
+            --output-path Documentation \
+            --transform-for-static-hosting \
+            --hosting-base-path swift-tca-core-location
 
       - uses: actions/configure-pages@v5
 
