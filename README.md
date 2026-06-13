@@ -1,13 +1,12 @@
 # Composable Core Location
 
-[![CI](https://github.com/pointfreeco/composable-core-location/workflows/CI/badge.svg)](https://github.com/pointfreeco/composable-core-location/actions?query=workflow%3ACI)
-[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fpointfreeco%2Fcomposable-core-location%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/pointfreeco/composable-core-location)
-[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fpointfreeco%2Fcomposable-core-location%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/pointfreeco/composable-core-location)
+[![CI](https://github.com/mehmetbaykar/swift-tca-core-location/actions/workflows/ci.yml/badge.svg)](https://github.com/mehmetbaykar/swift-tca-core-location/actions/workflows/ci.yml)
 
-Composable Core Location is library that bridges [the Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture) and [Core Location](https://developer.apple.com/documentation/corelocation).
+Composable Core Location bridges [the Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture) and [Core Location](https://developer.apple.com/documentation/corelocation) with a testable dependency client.
 
 * [Example](#example)
 * [Basic usage](#basic-usage)
+* [Testing](#testing)
 * [Installation](#installation)
 * [Documentation](#documentation)
 * [Help](#help)
@@ -16,167 +15,149 @@ Composable Core Location is library that bridges [the Composable Architecture](h
 
 Check out the [LocationManager](./Examples/LocationManager) demo to see ComposableCoreLocation in practice.
 
+The example project is generated with Tuist from [Examples/Project.swift](./Examples/Project.swift). Its Tuist package points at this package with `.package(path: "../..")`, so the example app and tests use the local sources directly.
+
+From the repository root:
+
+```sh
+make generate-examples
+make test-examples
+```
+
 ## Basic Usage
 
-To use ComposableCoreLocation in your application, you can add an action to your domain that represents all of the actions the manager can emit via the `CLLocationManagerDelegate` methods:
+Access Core Location from reducers through the `locationManager` dependency:
 
 ```swift
+import ComposableArchitecture
 import ComposableCoreLocation
+import CoreLocation
 
-enum AppAction {
-  case locationManager(LocationManager.Action)
+@Reducer
+struct AppFeature {
+  @ObservableState
+  struct State: Equatable {
+    var lastLocation: Location?
+  }
 
-  // Your domain's other actions:
-  ...
-}
-```
+  enum Action: Equatable {
+    case locationManager(LocationManager.Action)
+    case requestAuthorizationButtonTapped
+    case task
+  }
 
-The `LocationManager.Action` enum holds a case for each delegate method of `CLLocationManagerDelegate`, such as `didUpdateLocations`, `didEnterRegion`, `didUpdateHeading`, and more.
+  @Dependency(\.locationManager) private var locationManager
 
-Next we add a `LocationManager`, which is a wrapper around `CLLocationManager` that the library provides, to the application's environment of dependencies:
+  var body: some ReducerOf<Self> {
+    Reduce { state, action in
+      switch action {
+      case .task:
+        let delegate = locationManager.delegate
+        return .run { send in
+          for await action in await delegate() {
+            await send(.locationManager(action))
+          }
+        }
 
-```swift
-struct AppEnvironment {
-  var locationManager: LocationManager
+      case .requestAuthorizationButtonTapped:
+        let requestWhenInUseAuthorization = locationManager.requestWhenInUseAuthorization
+        return .run { _ in
+          await requestWhenInUseAuthorization()
+        }
 
-  // Your domain's other dependencies:
-  ...
-}
-```
+      case .locationManager(.didChangeAuthorization(.authorizedAlways)),
+        .locationManager(.didChangeAuthorization(.authorizedWhenInUse)):
+        let requestLocation = locationManager.requestLocation
+        return .run { _ in
+          await requestLocation()
+        }
 
-Then, we simultaneously subscribe to delegate actions and request authorization from our application's reducer by returning an effect from an action to kick things off. One good choice for such an action is the `onAppear` of your view.
+      case .locationManager(.didUpdateLocations(let locations)):
+        state.lastLocation = locations.first
+        return .none
 
-```swift
-let appReducer = Reducer<AppState, AppAction, AppEnvironment> {
-  state, action, environment in
-
-  switch action {
-  case .onAppear:
-    return .merge(
-      environment.locationManager
-        .delegate()
-        .map(AppAction.locationManager),
-
-      environment.locationManager
-        .requestWhenInUseAuthorization()
-        .fireAndForget()
-    )
-
-  ...
+      case .locationManager:
+        return .none
+      }
+    }
   }
 }
 ```
 
-With that initial setup we will now get all of `CLLocationManagerDelegate`'s delegate methods delivered to our reducer via actions. To handle a particular delegate action we can destructure it inside the `.locationManager` case we added to our `AppAction`. For example, once we get location authorization from the user we could request their current location:
+`LocationManager.Action` contains the delegate callbacks emitted by `CLLocationManagerDelegate`, including authorization changes, location updates, region monitoring events, heading updates, visit events, and errors.
+
+The live dependency is installed automatically through TCA's dependency system. In application code you call async endpoints such as `requestWhenInUseAuthorization`, `requestLocation`, `startUpdatingLocation`, and `set(...)` from `.run` effects. Long-lived delegate callbacks are consumed from `locationManager.delegate()` as an `AsyncStream`.
+
+## Testing
+
+Tests use Swift Testing, TCA's `TestStore`, and dependency overrides. Start from `LocationManager.failing` and override only the endpoints used by the reducer under test:
 
 ```swift
-case .locationManager(.didChangeAuthorization(.authorizedAlways)),
-     .locationManager(.didChangeAuthorization(.authorizedWhenInUse)):
+import ComposableArchitecture
+import ComposableCoreLocation
+import CoreLocation
+import Foundation
+import Testing
 
-  return environment.locationManager
-    .requestLocation()
-    .fireAndForget()
-```
+@MainActor
+@Suite
+struct AppFeatureTests {
+  @Test
+  func receivesLocationUpdates() async {
+    let location = Location(
+      coordinate: CLLocationCoordinate2D(latitude: 10, longitude: 20),
+      timestamp: Date(timeIntervalSince1970: 0)
+    )
+    let (stream, continuation) = AsyncStream.makeStream(of: LocationManager.Action.self)
 
-If the user denies location access we can show an alert telling them that we need access to be able to do anything in the app:
+    let store = TestStore(initialState: AppFeature.State()) {
+      AppFeature()
+    } withDependencies: {
+      var manager = LocationManager.failing
+      manager.delegate = { stream }
+      $0.locationManager = manager
+    }
 
-```swift
-case .locationManager(.didChangeAuthorization(.denied)),
-     .locationManager(.didChangeAuthorization(.restricted)):
+    let task = await store.send(.task)
+    continuation.yield(.didUpdateLocations([location]))
 
-  state.alert = """
-    Please give location access so that we can show you some cool stuff.
-    """
-  return .none
-```
+    await store.receive(.locationManager(.didUpdateLocations([location]))) {
+      $0.lastLocation = location
+    }
 
-Otherwise, we'll be notified of the user's location by handling the `.didUpdateLocations` action:
-
-```swift
-case let .locationManager(.didUpdateLocations(locations)):
-  // Do something cool with user's current location.
-  ...
-```
-
-Once you have handled all the `CLLocationManagerDelegate` actions you care about, you can ignore the rest:
-
-```swift
-case .locationManager:
-  return .none
-```
-
-And finally, when creating the `Store` to power your application you will supply the "live" implementation of the `LocationManager`, which is an instance that holds onto a `CLLocationManager` on the inside and interacts with it directly:
-
-```swift
-let store = Store(
-  initialState: AppState(),
-  reducer: appReducer,
-  environment: AppEnvironment(
-    locationManager: .live,
-    // And your other dependencies...
-  )
-)
-```
-
-This is enough to implement a basic application that interacts with Core Location.
-
-The true power of building your application and interfacing with Core Location in this way is the ability to _test_ how your application interacts with Core Location. It starts by creating a `TestStore` whose environment contains a `.failing` version of the `LocationManager`. Then, you can selectively override whichever endpoints your feature needs to supply deterministic functionality.
-
-For example, to test the flow of asking for location authorization, being denied, and showing an alert, we need to override the `create` and `requestWhenInUseAuthorization` endpoints. The `create` endpoint needs to return an effect that emits the delegate actions, which we can control via a publish subject. And the `requestWhenInUseAuthorization` endpoint is a fire-and-forget effect, but we can make assertions that it was called how we expect.
-
-```swift
-let store = TestStore(
-  initialState: AppState(),
-  reducer: appReducer,
-  environment: AppEnvironment(
-    locationManager: .failing
-  )
-)
-
-var didRequestInUseAuthorization = false
-let locationManagerSubject = PassthroughSubject<LocationManager.Action, Never>()
-
-store.environment.locationManager.create = { locationManagerSubject.eraseToEffect() }
-store.environment.locationManager.requestWhenInUseAuthorization = {
-  .fireAndForget { didRequestInUseAuthorization = true }
+    continuation.finish()
+    await task.cancel()
+  }
 }
 ```
 
-Then we can write an assertion that simulates a sequence of user steps and location manager delegate actions, and we can assert against how state mutates and how effects are received. For example, we can have the user come to the screen, deny the location authorization request, and then assert that an effect was received which caused the alert to show:
-
-```swift
-store.send(.onAppear)
-
-// Simulate the user denying location access
-locationManagerSubject.send(.didChangeAuthorization(.denied))
-
-// We receive the authorization change delegate action from the effect
-store.receive(.locationManager(.didChangeAuthorization(.denied))) {
-  $0.alert = """
-    Please give location access so that we can show you some cool stuff.
-    """
-
-// Store assertions require all effects to be completed, so we complete
-// the subject manually.
-locationManagerSubject.send(completion: .finished)
-```
-
-And this is only the tip of the iceberg. We can further test what happens when we are granted authorization by the user and the request for their location returns a specific location that we control, and even what happens when the request for their location fails. It is very easy to write these tests, and we can test deep, subtle properties of our application.
+See [Examples/LocationManager/CommonTests](./Examples/LocationManager/CommonTests) for complete Swift Testing coverage of authorization, current-location requests, and MapKit search behavior.
 
 ## Installation
 
-You can add ComposableCoreLocation to an Xcode project by adding it as a package dependency.
+This package uses Swift tools 6.3, Swift 6 language mode, and TCA 1.26. It supports iOS 16, macOS 13, tvOS 16, and watchOS 9 or newer.
 
-  1. From the **File** menu, select **Swift Packages › Add Package Dependency…**
-  2. Enter "https://github.com/pointfreeco/composable-core-location" into the package repository URL text field
+You can add ComposableCoreLocation to an Xcode project by adding it as a package dependency:
+
+```text
+https://github.com/mehmetbaykar/swift-tca-core-location
+```
+
+For a Swift package that tracks the current migrated package:
+
+```swift
+.package(url: "https://github.com/mehmetbaykar/swift-tca-core-location", branch: "main")
+```
+
+Then add `ComposableCoreLocation` as a dependency of the target that uses Core Location.
 
 ## Documentation
 
-The latest documentation for the Composable Core Location APIs is available [here](https://pointfreeco.github.io/composable-core-location/).
+The latest generated documentation for the Composable Core Location APIs is available [here](https://mehmetbaykar.github.io/swift-tca-core-location/).
 
 ## Help
 
-If you want to discuss Composable Core Location and the Composable Architecture, or have a question about how to use them to solve a particular problem, ask around on [its Swift forum](https://forums.swift.org/c/related-projects/swift-composable-architecture).
+If you want to discuss Composable Core Location and the Composable Architecture, or have a question about how to use them to solve a particular problem, ask around on [the Swift forum for the Composable Architecture](https://forums.swift.org/c/related-projects/swift-composable-architecture).
 
 ## License
 

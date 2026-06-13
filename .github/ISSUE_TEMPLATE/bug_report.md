@@ -25,9 +25,9 @@ Give a clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Environment**
- - Xcode [e.g. 11.4.1]
- - Swift [e.g. 5.2.2]
- - OS (if applicable): [e.g. iOS 13]
+ - Xcode [e.g. 26.5]
+ - Swift [e.g. 6.3.2]
+ - OS (if applicable): [e.g. iOS 26 or macOS 26]
 
 **Additional context**
 Add any more context about the problem here.
