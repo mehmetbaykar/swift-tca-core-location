@@ -147,7 +147,7 @@ https://github.com/mehmetbaykar/swift-tca-core-location
 For a Swift package, depend on a release tag:
 
 ```swift
-.package(url: "https://github.com/mehmetbaykar/swift-tca-core-location", from: "0.4.0")
+.package(url: "https://github.com/mehmetbaykar/swift-tca-core-location", from: "0.4.1")
 ```
 
 Then add `ComposableCoreLocation` as a dependency of the target that uses Core Location.
