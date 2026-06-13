@@ -1,6 +1,7 @@
 # Composable Core Location
 
 [![CI](https://github.com/mehmetbaykar/swift-tca-core-location/actions/workflows/ci.yml/badge.svg)](https://github.com/mehmetbaykar/swift-tca-core-location/actions/workflows/ci.yml)
+[![Swift 6.3](https://img.shields.io/badge/Swift-6.3-orange.svg)](https://www.swift.org)
 
 Composable Core Location bridges [the Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture) and [Core Location](https://developer.apple.com/documentation/corelocation) with a testable dependency client.
 
@@ -143,17 +144,17 @@ You can add ComposableCoreLocation to an Xcode project by adding it as a package
 https://github.com/mehmetbaykar/swift-tca-core-location
 ```
 
-For a Swift package that tracks the current migrated package:
+For a Swift package, depend on a release tag:
 
 ```swift
-.package(url: "https://github.com/mehmetbaykar/swift-tca-core-location", branch: "main")
+.package(url: "https://github.com/mehmetbaykar/swift-tca-core-location", from: "0.4.0")
 ```
 
 Then add `ComposableCoreLocation` as a dependency of the target that uses Core Location.
 
 ## Documentation
 
-The latest generated documentation for the Composable Core Location APIs is available [here](https://mehmetbaykar.github.io/swift-tca-core-location/).
+Generated documentation is published from GitHub releases to <https://mehmetbaykar.github.io/swift-tca-core-location/>. Source documentation also lives inline under [Sources/ComposableCoreLocation](./Sources/ComposableCoreLocation).
 
 ## Help
 

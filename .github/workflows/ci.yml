@@ -31,7 +31,7 @@ jobs:
         run: |
           xcodebuild -version | tee /tmp/xcode-version.txt
           swift --version | tee /tmp/swift-version.txt
-          grep -q '^Xcode 26\.' /tmp/xcode-version.txt
+          grep -q '^Xcode 26\.5$' /tmp/xcode-version.txt
           grep -q 'Swift version 6\.3' /tmp/swift-version.txt
 
       - name: Test package
@@ -53,7 +53,7 @@ jobs:
         run: |
           xcodebuild -version | tee /tmp/xcode-version.txt
           swift --version | tee /tmp/swift-version.txt
-          grep -q '^Xcode 26\.' /tmp/xcode-version.txt
+          grep -q '^Xcode 26\.5$' /tmp/xcode-version.txt
           grep -q 'Swift version 6\.3' /tmp/swift-version.txt
           tuist version
 
