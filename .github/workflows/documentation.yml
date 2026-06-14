@@ -52,6 +52,8 @@ jobs:
         run: |
           find Documentation -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' \) \
             -exec perl -pi -e 's#\{\{BASE_PATH\}\}#/swift-tca-core-location#g' {} +
+          perl -0pi -e 's#(<script>var baseUrl = "/swift-tca-core-location/"</script>)#<script>if (location.pathname === "/swift-tca-core-location/" || location.pathname === "/swift-tca-core-location/index.html") location.replace("/swift-tca-core-location/documentation/composablecorelocation/");</script>$1#' Documentation/index.html
+          grep -q '/swift-tca-core-location/documentation/composablecorelocation/' Documentation/index.html
           touch Documentation/.nojekyll
           if grep -R --line-number --fixed-strings '{{BASE_PATH}}' Documentation; then
             echo "::error::DocC static output still contains {{BASE_PATH}} placeholders."
