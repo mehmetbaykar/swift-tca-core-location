@@ -48,6 +48,16 @@ jobs:
             --transform-for-static-hosting \
             --hosting-base-path swift-tca-core-location
 
+      - name: Prepare Documentation for Pages
+        run: |
+          find Documentation -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' \) \
+            -exec perl -pi -e 's#\{\{BASE_PATH\}\}#/swift-tca-core-location#g' {} +
+          touch Documentation/.nojekyll
+          if grep -R --line-number --fixed-strings '{{BASE_PATH}}' Documentation; then
+            echo "::error::DocC static output still contains {{BASE_PATH}} placeholders."
+            exit 1
+          fi
+
       - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v5
