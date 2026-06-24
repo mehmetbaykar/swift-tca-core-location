@@ -6,9 +6,11 @@
 Composable Core Location bridges [the Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture) and [Core Location](https://developer.apple.com/documentation/corelocation) with a testable dependency client.
 
 * [Example](#example)
+* [Requirements](#requirements)
+* [Installation](#installation)
 * [Basic usage](#basic-usage)
 * [Testing](#testing)
-* [Installation](#installation)
+* [API surface](#api-surface)
 * [Documentation](#documentation)
 * [Help](#help)
 
@@ -25,7 +27,32 @@ make generate-examples
 make test-examples
 ```
 
-## Basic Usage
+## Requirements
+
+The package currently targets Swift 6.3, TCA 1.26, and the Swift 6 language mode, with these platform minimums:
+
+* iOS 16
+* macOS 13
+* tvOS 16
+* watchOS 9
+
+## Installation
+
+You can add ComposableCoreLocation to an Xcode project by adding it as a package dependency:
+
+```text
+https://github.com/mehmetbaykar/swift-tca-core-location
+```
+
+For a Swift package, depend on a release tag:
+
+```swift
+.package(url: "https://github.com/mehmetbaykar/swift-tca-core-location", from: "0.4.1")
+```
+
+Then add `ComposableCoreLocation` as a dependency of the target that uses Core Location.
+
+## Basic usage
 
 Access Core Location from reducers through the `locationManager` dependency:
 
@@ -134,23 +161,18 @@ struct AppFeatureTests {
 
 See [Examples/LocationManager/CommonTests](./Examples/LocationManager/CommonTests) for complete Swift Testing coverage of authorization, current-location requests, and MapKit search behavior.
 
-## Installation
+## API surface
 
-This package uses Swift tools 6.3, Swift 6 language mode, and TCA 1.26. It supports iOS 16, macOS 13, tvOS 16, and watchOS 9 or newer.
+`LocationManager` wraps `CLLocationManager` and provides:
 
-You can add ComposableCoreLocation to an Xcode project by adding it as a package dependency:
+* a `delegate()` `AsyncStream<LocationManager.Action>` of `CLLocationManagerDelegate` callbacks
+* authorization endpoints: `requestWhenInUseAuthorization`, `requestAlwaysAuthorization`, `requestTemporaryFullAccuracyAuthorization`, `authorizationStatus`, `accuracyAuthorization`
+* location endpoints: `requestLocation`, `startUpdatingLocation` / `stopUpdatingLocation`, `startMonitoringSignificantLocationChanges` / `stopMonitoringSignificantLocationChanges`, `location`
+* heading endpoints: `startUpdatingHeading` / `stopUpdatingHeading`, `dismissHeadingCalibrationDisplay`, `heading`, `headingAvailable`
+* region and visit monitoring: `startMonitoringForRegion` / `stopMonitoringForRegion`, `monitoredRegions`, `maximumRegionMonitoringDistance`, `startMonitoringVisits` / `stopMonitoringVisits`
+* availability and configuration queries plus `set(_:)` for updating manager properties
 
-```text
-https://github.com/mehmetbaykar/swift-tca-core-location
-```
-
-For a Swift package, depend on a release tag:
-
-```swift
-.package(url: "https://github.com/mehmetbaykar/swift-tca-core-location", from: "0.4.1")
-```
-
-Then add `ComposableCoreLocation` as a dependency of the target that uses Core Location.
+`LocationManager.Action` mirrors the delegate callbacks (authorization changes, location and heading updates, region monitoring, visits, and errors). Model types such as `Location`, `Heading`, `Region`, `Beacon`, and `Visit` wrap Core Location values in test-friendly Swift types.
 
 ## Documentation
 

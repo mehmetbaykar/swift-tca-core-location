@@ -1,7 +1,7 @@
 EXAMPLES_WORKSPACE = Examples/ComposableCoreLocationExamples.xcworkspace
-XCODEBUILD_FLAGS = -configuration Debug
+XCODEBUILD_FLAGS = -configuration Debug -derivedDataPath Examples/DerivedDataTuist CODE_SIGNING_ALLOWED=NO -quiet
 IOS_SIMULATOR_DESTINATION = generic/platform=iOS Simulator
-MACOS_DESTINATION = platform=macOS
+MACOS_DESTINATION = platform=macOS,arch=arm64
 
 default: test
 

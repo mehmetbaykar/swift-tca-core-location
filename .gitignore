@@ -3,8 +3,10 @@
 /Derived
 /Packages
 /*.xcodeproj
-Examples/Derived/
+Examples/.build
+Examples/Derived
+Examples/DerivedDataTuist
 Examples/*.xcodeproj
 Examples/*.xcworkspace
-Examples/Tuist/.build/
+Examples/Tuist/.build
 xcuserdata/
